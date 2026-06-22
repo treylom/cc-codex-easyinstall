@@ -85,13 +85,23 @@ fi
 
 # ── 5. Codex CLI (@openai/codex) ────────────────────────────
 echo "[5/7] Codex CLI 설치..."
-if command -v codex >/dev/null 2>&1; then
-    echo "  → 이미 설치됨. 건너뜀. ($(codex --version 2>/dev/null))"
+# ⚠️ WSL interop 누수 대비: 윈도우 npm-global 의 codex shim 이 PATH(/mnt/...)에 잡히면
+#    "이미 설치됨"으로 오판해 리눅스 네이티브 설치를 건너뛴다(루돌프 2026-06-22 실측).
+#    → codex 경로가 /mnt/* 이거나 `codex --version` 이 비면 '미설치'로 간주하고 설치 강행.
+CODEX_PATH="$(command -v codex 2>/dev/null || true)"
+CODEX_VER="$(codex --version 2>/dev/null || true)"
+if [ -n "$CODEX_PATH" ] && [ "${CODEX_PATH#/mnt/}" = "$CODEX_PATH" ] && [ -n "$CODEX_VER" ]; then
+    echo "  → 이미 설치됨(리눅스 네이티브). 건너뜀. ($CODEX_VER)"
 else
+    [ -n "$CODEX_PATH" ] && [ "${CODEX_PATH#/mnt/}" != "$CODEX_PATH" ] && \
+        echo "  → 윈도우 codex shim 감지($CODEX_PATH) — 무시하고 리눅스 네이티브 설치 진행."
     # npm 이 nvm 셸에서 잡히도록 한 번 더 로드
     ( set +u; export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; npm install -g @openai/codex ) \
         || { echo "  ⚠️ Codex 설치 실패 — 1.2.4/1.2.5에서 'npm install -g @openai/codex'로 재시도 안내." >&2; }
-    command -v codex >/dev/null 2>&1 && echo "  → Codex 설치 완료 ($(codex --version 2>/dev/null))" || true
+    # 설치 후 재확인 (nvm 셸 기준 — 윈도우 shim 아닌 리눅스 codex 확인)
+    ( set +u; export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+      NP="$(command -v codex 2>/dev/null || true)"
+      [ -n "$NP" ] && [ "${NP#/mnt/}" = "$NP" ] && echo "  → Codex 설치 완료 ($(codex --version 2>/dev/null))" ) || true
 fi
 
 # ── 6. Oh My Tmux (테마 + 마우스) ───────────────────────────
