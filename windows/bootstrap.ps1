@@ -31,6 +31,17 @@ function Test-WslReady {
     } catch { return $false }
 }
 
+function Get-WslDistros {
+    # wsl.exe는 배포 목록을 UTF-16LE로 출력 → 인코딩 맞춰 읽고 정리
+    # (스크립트 상단 chcp 65001 상태에서 그냥 읽으면 mojibake → 빈 목록 오판)
+    $old = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
+        return @(wsl.exe -l -q 2>$null | ForEach-Object { ($_ -replace "[^\x20-\x7E]", "").Trim() } | Where-Object { $_ -ne "" })
+    } catch { return @() }
+    finally { [Console]::OutputEncoding = $old }
+}
+
 function Register-Resume {
     # 재부팅 후 로그인 시 Phase 2 자동 실행 (RunOnce)
     $cmd = "powershell -ExecutionPolicy Bypass -NoProfile -File `"$ScriptDir\bootstrap.ps1`" -Phase 2"
@@ -80,9 +91,13 @@ if ($Phase -eq 2) {
 # ── Phase 1 ─────────────────────────────────────────────────
 Head "패스트캠퍼스 강의 — 설치 시작 (Phase 1)"
 
-# 1) WSL 설치 상태 점검
-$hasDistro = $false
-try { $list = (wsl -l -q) 2>$null; if ($LASTEXITCODE -eq 0 -and ($list -join "`n") -match $Distro) { $hasDistro = $true } } catch {}
+# 1) WSL 설치 상태 점검 (기존 배포 견고 감지 — UTF-16 + 이름변형 대응)
+$distros = Get-WslDistros
+if ($distros -notcontains $Distro) {
+    $alt = $distros | Where-Object { $_ -like "Ubuntu*" } | Select-Object -First 1
+    if ($alt) { Say "기존 배포 '$alt' 사용(요청 '$Distro' 미발견)."; $Distro = $alt }
+}
+$hasDistro = ($distros -contains $Distro)
 
 if ($hasDistro -and (Test-WslReady)) {
     Say "WSL + $Distro 이미 준비됨 → 재부팅 없이 바로 셋업합니다."
@@ -102,6 +117,17 @@ Head "WSL2 + $Distro 설치"
 Say "이 단계는 윈도우 기능을 켜고 우분투를 받습니다. 끝나면 재부팅이 필요합니다."
 Register-Resume
 wsl --install -d $Distro
+$installExit = $LASTEXITCODE
+if ($installExit -ne 0) {
+    # ERROR_ALREADY_EXISTS 등 — 기존 배포가 있으면 재부팅 없이 셋업 시도
+    Say "wsl --install 종료코드 $installExit — 기존 배포 확인 후 진행을 시도합니다."
+    if (((Get-WslDistros) -contains $Distro) -and (Test-WslReady)) {
+        Say "기존 $Distro 사용 가능 → 재부팅 없이 바로 셋업합니다."
+        if (Run-WslSetup) { Head "설치 완료!"; Say "WSL 터미널에서:  claude" }
+        Read-Host "`n계속하려면 Enter"
+        exit 0
+    }
+}
 Head "재부팅이 필요합니다"
 Say "재부팅하면 자동으로 이어서 설치합니다(우분투 이름·비번만 직접 설정)."
 $ans = Read-Host "지금 재부팅할까요? (Y/N)"
