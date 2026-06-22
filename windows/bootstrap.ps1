@@ -1,4 +1,4 @@
-# 패스트캠퍼스 강의 — 윈도우 종합 설치 부트스트랩
+﻿# 패스트캠퍼스 강의 — 윈도우 종합 설치 부트스트랩
 # 설치.bat 가 관리자 권한으로 이 파일을 호출한다. 직접 실행도 가능:
 #   powershell -ExecutionPolicy Bypass -File bootstrap.ps1
 #
@@ -12,6 +12,9 @@ param(
     [int]$Phase = 1,
     [string]$Distro = "Ubuntu"
 )
+
+# 콘솔 한글(UTF-8) 출력 — PowerShell 5.1 한국어 Windows mojibake 방지
+try { chcp 65001 > $null; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
